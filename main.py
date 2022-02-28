@@ -12,6 +12,7 @@ import numpy as np
 from tensorflow.keras import backend as K
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
+from flashtext import KeywordProcessor
 
 
 
@@ -119,7 +120,6 @@ EPOCHS = 20  # Number of epochs to train for.
 
 ATTENTION_FUNC='general'
 
-# Load the dataset: sentence in english, sentence in spanish 
 df=pd.read_csv(train_filenamepath, sep="\t", header=None, names=[INPUT_COLUMN,TARGET_COLUMN], usecols=[0,1], 
                nrows=NUM_SAMPLES)
 # Preprocess the input data
@@ -142,10 +142,8 @@ tokenizer_inputs.fit_on_texts(input_data)
 input_sequences = tokenizer_inputs.texts_to_sequences(input_data)
 # Claculate the max length
 input_max_len = max(len(s) for s in input_sequences)
-print('Max Input Length: ', input_max_len)
+
 # Show some example of tokenize sentences, useful to check the tokenization
-print(input_data[1000])
-print(input_sequences[1000])
 
 # tokenize the outputs
 # don't filter out special characters (filters = '')
@@ -163,20 +161,12 @@ target_sequences_inputs = tokenizer_outputs.texts_to_sequences(target_input_data
 
 # determine maximum length output sequence
 target_max_len = max(len(s) for s in target_sequences)
-print('Max Target Length: ', target_max_len)
-
-print(target_data[1000])
-print(target_sequences[1000])
-print(target_input_data[1000])
-print(target_sequences_inputs[1000])
 
 # get the word to index mapping for input language
 word2idx_inputs = tokenizer_inputs.word_index
-print('Found %s unique input tokens.' % len(word2idx_inputs))
 
 # get the word to index mapping for output language
 word2idx_outputs = tokenizer_outputs.word_index
-print('Found %s unique output tokens.' % len(word2idx_outputs))
 
 # store number of output and input words for later
 # remember to add 1 since indexing starts at 1
@@ -191,12 +181,8 @@ idx2word_outputs = {v:k for k, v in word2idx_outputs.items()}
 
 # pad the input sequences
 encoder_inputs = pad_sequences(input_sequences, maxlen=input_max_len, padding='post')
-print("encoder_inputs.shape:", encoder_inputs.shape)
-print("encoder_inputs[0]:", encoder_inputs[0])
 # pad the decoder input sequences
 decoder_inputs = pad_sequences(target_sequences_inputs, maxlen=target_max_len, padding='post')
-print("decoder_inputs[0]:", decoder_inputs[0])
-print("decoder_inputs.shape:", decoder_inputs.shape)
 # pad the target output sequences
 decoder_targets = pad_sequences(target_sequences, maxlen=target_max_len, padding='post')
 
@@ -261,7 +247,6 @@ initial_state = encoder.init_states(1)
 # Call the encoder for testing
 test_encoder_output = encoder(tf.constant(
     [[1, 23, 4, 5, 0, 0]]), initial_state)
-print(test_encoder_output[0].shape)
 # Create the decoder
 decoder = Decoder(num_words_output, EMBEDDING_DIM, HIDDEN_DIM)
 # Get the initial states
@@ -269,7 +254,6 @@ de_initial_state = test_encoder_output[1:]
 # Call the decoder for testing
 test_decoder_output = decoder(tf.constant(
     [[1, 3, 5, 7, 9, 0, 0, 0]]), de_initial_state)
-print(test_decoder_output[0].shape)
 
 
 def loss_func(targets, logits):
@@ -540,7 +524,6 @@ checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 def predict_seq2seq_att(input_text, input_max_len, tokenizer_inputs, word2idx_outputs, idx2word_outputs):
     if input_text is None:
         input_text = input_data[np.random.choice(len(input_data))]
-    print(input_text)
     # Tokenize the input text
     input_seq = tokenizer_inputs.texts_to_sequences([input_text])
     # Pad the sentence
@@ -570,51 +553,47 @@ def predict_seq2seq_att(input_text, input_max_len, tokenizer_inputs, word2idx_ou
         if out_words[-1] == '<eos>' or len(out_words) >= 20:
             break
     # Join the output words
-    print(' '.join(out_words))
     return np.array(alignments), input_text.split(' '), out_words
 
 
-n_predictions=1
-#test_sents = input_data[1:(1+n_predictions)]
-input_data=["the lungs are hyperinflated with coarse interstitial markings compatible with obstructive pulmonary disease and emphysema ."]
-test_sents = input_data
+def translation(inputtext):
+    keydata=pd.read_csv('dict.csv')
+    keyword_processor = KeywordProcessor()
 
-# Create the figure to plot in
-#fig = plt.figure(figsize=(10, 20))
-for i, test_sent in enumerate(test_sents):
-    # Call the predict function to get the translation
-    alignments, source, prediction = predict_seq2seq_att(test_sent, input_max_len, tokenizer_inputs, 
-                                                     word2idx_outputs, idx2word_outputs)
-    attention = np.squeeze(alignments, (1, 2))
+    inputQuery1 = inputtext
+    # add keywords
+    keyword_names = keydata["WORDS"]
+    clean_names = keydata["MEANING"]
+    for keyword_name, clean_name in zip(keyword_names, clean_names):
+        keyword_processor.add_keyword(keyword_name, clean_name)
+    text=(inputQuery1) 
+    keywords_found = keyword_processor.extract_keywords(text)
+    new_sentence = keyword_processor.replace_keywords(text)
     
-
-# print (prediction)
-sep = ' '
-res = sep.join(prediction)
-# print(res)
-    
-
-
+    return new_sentence 
 
 class predict1 (Resource):
     def get(self, text): 
         n_predictions=1
-        #test_sents = input_data[1:(1+n_predictions)]
-        input_data = text
-        test_sents = input_data
-
-        # Create the figure to plot in
-        #fig = plt.figure(figsize=(10, 20))
+        input_data = text.lower()
+        s=input_data.split("impression")[0]
+        p = re.compile("findings(.*)" and "finding(.*)")
+        filtertext = p.findall(s)
+        string=filtertext[0]
+        characters = 80
+        final_text=string[:characters]
+        test_sents = final_text
         for i, test_sent in enumerate(test_sents):
             # Call the predict function to get the translation
-            alignments, source, prediction = predict_seq2seq_att(test_sent, input_max_len, tokenizer_inputs, 
+            alignments, source, finalprediction = predict_seq2seq_att(test_sent, input_max_len, tokenizer_inputs, 
                                                              word2idx_outputs, idx2word_outputs)
             attention = np.squeeze(alignments, (1, 2))
 
-
+        predict = finalprediction
         sep = ' '
         res = sep.join(prediction)
-        return {'data': res}
+        responce1 = res.replace(" <eos>", "")
+        return jsonify({'data': responce1, 'tranlation':translation(responce1)})
 
 api.add_resource(status,'/')
 api.add_resource(predict,'/predic/<string:text>')
